@@ -1,6 +1,10 @@
 # Coding portfolio
 Contact me at: **segfault@mailfence.com**
 
+**THIS IS NOT YET READY**
+
+If you're unfamiliar with Windows internals, you should first read BACKGROUND.md, for explanations of relevant concepts.
+
 This is an overview of the projects, each project folder contains a more detailed write-up in the README file.
 
 ### About me
@@ -36,14 +40,19 @@ Front-end written with React.
 I am deeply passionate about computer science and cybersecurity. The past year or two I've been reading about this kind of stuff a lot, this was a very fun project for me!
 While this won't detect some more advanced malware, this should still detect known malware and a majority of less sophisticated malware.
 
-## At-rest encryption CLI-tool
+## [At-rest encryption CLI-tool](vanguard/README.md)
 #### What is it?
-A tool for protecting important files with a CLI serving as the UI. First of all you create a password, then you can set files and folders under protection (to be encrypted with password). The normal state of a protected file is to be encrypted (encryption at-rest), then by logging on in the CLI, you can release selected files/folders (decrypt them),
-which will start a 'session', which is essentially just a timer in a seperate process. Session length can be controlled by the user, but by default it is 30min.
+A tool for protecting important files with an interactive shell and CLI commands serving as the UI.
+
+You can `protect` files or folders, meaning they will be encrypted with a password and added into a local database. If the database doesn't exist it will be created automatically. You can also set a group for the files, this serves as sort of a category so you can select certain files more easily.
+
+The normal state of a protected file is to be encrypted (encryption at-rest), then you can `open` a file, folder, group or all the protected files.
+This will start a *session*, which is essentially just a timer in a seperate process. Session length can be controlled by the user, but by default it is 30min.
 After this session timer runs out, processes with file open will be shut down and the file will be locked again, asking for password to re-release.
+You can also `get` a files, folders, groups or all entries from the database.
 
 #### Why?
-I decided to make this because while setting up a new computer I realized I need a tool to secure important files at-rest.
+I decided to make this, because while setting up a new computer, I realized I need a tool to secure important files at-rest.
 Then I thought it would be a great portfolio project and relatively simple to make.
 
 ## Custom implementation of GetProcAddress and GetModule
@@ -62,7 +71,7 @@ A custom implementation of GetProcAddress and GetModule allows the bypassing of 
 For cyber security professionals, the defending party, it is critical to understand how the attackers may attack, in order to protect against this.
 For example what I would do to detect this technique, is create a YARA rule for this parsing of PE headers and PEB, as these offsets are constant and this is not something benign programs typically do.
 
-## IAT hook and IAT hook detector
+## [IAT hook and IAT hook detector](iathook/README.md)
 #### What is it?
 Import Address Table(IAT) hooking demonstration as well as a detection mechanism I came up with. Modern programs use shared libraries for modularity. When a program calls an imported shared library function, it will basically say: jump to the address, which is located in the IAT at position n, then it will execute the function located at that address in memory.
 With IAT hooking, the address is changed to point to a different function, so when function A is called, it will actually point to function B, executing that code.
@@ -71,7 +80,7 @@ With IAT hooking, the address is changed to point to a different function, so wh
 I almost immediately got the idea that since KnownDLLs (like kernel32.dll and ntdll.dll) are located at the same address across processes for memory efficiency, you can get the function addresses from two processes and compare them, to see if one of them is hooked. Assuming you can't know for sure any single process is not hooked, you would have to check a third one to see which 2 are correct. It would still be possible that all those are hooked resulting on a false negative, but that would be unlikely.
 
 After a little bit I realized I could instead just compare against the EAT addresses. It is possible to hook the EAT although less common and a little bit more tricky,
-however when this is integrated to an EDR or similar, you can compare every processes addresses, there is no way(realistically) that all of the IATs and EATs in all the processes would be hooked.
+however when this is integrated to an EDR or similar, you can compare every processes addresses, there is no way(realistically) that all of the IATs and EATs in all the processes would be hooked. I'm doing this through code injection into the target process.
 
 This IAT hook detector will check if a given process' modules' IATs are hooked. Due to the modular design, this can be easily integrated into an EDR, by looping through processes and calling this binary for them. In this real-world use-case, it will actually be more accurate, since we have now checked every address, so if one is different, that means a hook.
 
@@ -93,5 +102,5 @@ This is a technique used by both attackers and defenders and can be used to crea
 
 ## Projects in the pipeline
 Check out the Projects in the pipeline folder for projects which I have planned out but not yet gotten to coding them, as I'm coding something else.
-    - Custom EDR from scratch!
-    - 
+    - Static malware analysis engine and React frontend
+    - Custom EDR from scratch: An advanced cybersecurity tool to detect and mitigate threats in real-time
