@@ -23,7 +23,7 @@ Given the base address of the module and name of function, it will return the ad
 GetProcAddress goes to the base of the given module (HANDLE is the same as the base address) where the PE headers are located. All exes, and dlls are PE files and have these headers.
 It will then parse the headers to find the Export Address Table (IMAGE_DIRECTORY_ENTRY_EXPORT).
 
-![PE Header structure](rsrc/pestructure.png)
+![PE Header structure](rsrc/pestructure.PNG)
 
 Inside that, there are 3 important arrays: AddressOfNames, AddressOfNameOrdinals and AddressOfFunctions.
 First it will go through the AddressOfNames until it finds the target function. Then this index(1) inside AddressOfNameOrdinals, is the index(2) for AddressofFunctions,
