@@ -1,0 +1,43 @@
+PE Internals Part 1: A few words about Export Address Table (EAT)
+
+To understand how the PE loader finds addresses of functions exported by DLLs, we need to talk about Export Address Table (EAT).
+
+Here I write a few words about EAT in a PE file format.
+
+When we use a function exported by a DLL in our code, the loader will be responsible for parsing the headers of that DLL (say, “kernel32.dll”) until it reaches the Export Directory table on Optional Header -> DataDirectory. The Export Directory is implemented in a well-defined struct and contains all the information required by the loader to discover the relative virtual address (RVA) of exported functions:
+
+Untitled
+
+Some fields of this struct are of special interest to understand how the lookup of a function is done by PE loader:
+
+    Name: the name of the DLL.
+    Base: the number used to subtract from the ordinal number to get the index into the AddressOfFunctions array.
+    NumberOfFunctions: total number of exported functions, either by name or ordinal.
+    NumberOfNames: number of exported names, which need not be the NumberOfFunctions that presents all of the functions exported by module. Rather than that, this field presents only the number of functions exported by name. Functions can also be exported by ordinal, rather than name. If this value is 0, then all of the functions in this module are exported by ordinal and none of them is exported by name.
+    AddressOfFunctions: a RVA to the list of exported functions – it points to an array of NumberOfFunctions DWORD values. Each value is either an RVA pointing to the desired function, or in the case of forwarded functions, an RVA pointing to a forwarding string.
+    AddressOfNames: a RVA to the list of exported names – it points to an array of NumberOfNames DWORD values, each being a RVA to the exported symbol name.
+    AddressOfNameOrdinals: This field is an RVA and points to an array of WORDs. The WORDs are the export ordinals of all the exported functions in this module. However, don’t forget to add in the starting ordinal number specified in the Base field.
+
+So let’s suppose PE loader wants to load the name3 function in a particular DLL. First step is to parse the DLL headers and get access to the IMAGE_EXPORT_DIRECTORY. Then, the lookup will start as follows:
+
+Untitled (Source: resources.infosecinstitute.com)
+
+    Iterate the “AddressOfNames” array from i=0 to i=(NumberOfNames-1), comparing AddressOfNames[i] with the string name3.
+    Once we have a match in the “i” position, the loader will refer to AddressOfNameOrdinals[i] and get the ordinal associated to this function. Let’s suppose that AddressOfNameOrdinals[i] = 4.
+    Having the ordinal = 4, the loader will now refer to AddressOfFunctions on 4th position, that is AddressOfFunctions[4], to finally get the RVA associated to the “name3” function.
+
+Note that we are assuming that the loader starts its search from a given function name - name3. However, we could also have the scenario where the address of a function would be resolved from an ordinal “n” instead of a function name. In this scenario, the search would directly return the RVA stored in AddressOfFunctions[n-base], without having to search by a name in AddressOfNames.
+
+In summary, this is the process that PE loader will go through every time it wants to resolve the address of a function. Using PE Bear application, we can validate the _IMAGE_EXPORT_DIRECTORY structure and its fields for a given DLL. Let’s load C:\Windows\System32\kernel32.dll from disk and verify that:
+
+Untitled
+
+Here we have a detailed view of DOS Header, DOS stub, NT headers, sections, disasm contents and more associated to “kernel32.dll”. As we are interested in the export table, we should move to “NT Headers -> Optional Header”:
+
+Untitled
+
+Inside Optional Header, the figure above shows that in the file offset “170” of IMAGE_DATA_DIRECTORY, we have the RVA 99080 which is the RVA of “IMAGE_EXPORT_DIRECTORY”. If we move to this offset:
+
+Note: Remember FileOffset = RVA – section[Virtual address] + section[Pointer to raw data], so the FileOffset of RVA 99080 is 97880.
+
+Untitled
