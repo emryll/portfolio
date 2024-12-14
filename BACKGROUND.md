@@ -12,6 +12,8 @@ Ntdll is used for core system functionality, so every process loads ntdll.
 
 Ntdll is what will actually make the syscall, making the connection between user-land and kernel-land. The kernel will then run the corresponding code for the function.
 
+![Windows API flow](rsrc/windowsapi.PNG)
+
 ## Processes
 A process is just a container. A process has an access token, a private memory space, and can have threads, executable images and handles, which can be thinked of as tools 
 
@@ -37,12 +39,12 @@ Every PE file has headers at the beginning of the file. For these projects what 
 The Import Address Table is basically what translates imported functions to code.
 When you call an imported function, it will go to IAT and jump to the address connected to that function name. Each module has their own IAT
 
-IAT hooking project README goes over this structure in more detail
+IAT hooking project [README](iathook/README.md) goes over this structure in more detail
 
 #### Export Address Table(EAT)
 The export address is similar to IAT in purpose, but instead of imports it's exports, the functions other modules import.
 
-Custom GetProcAddress project README goes over this structure in more detail
+Custom GetProcAddress project (README)[parser/README.md] goes over this structure in more detail
 
 ## Process Injection
 To avoid detection, malware will often make a benign application run the malicious code. The code is generally either shellcode(position independent), which can run directly when placed in executable memory, or a DLL which the target application will load.
