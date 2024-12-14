@@ -3,7 +3,7 @@ Contact me at: **segfault@mailfence.com**
 
 **THIS IS NOT YET READY**
 
-If you're unfamiliar with Windows internals, you should first read [[BACKGROUND.md]], for explanations of relevant concepts.
+If you're unfamiliar with Windows internals, you should first read [BACKGROUND.md](BACKGROUND.md), for explanations of relevant concepts.
 
 This is an overview of the projects, each project folder contains a more detailed write-up in the README file.
 
