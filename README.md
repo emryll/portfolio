@@ -3,7 +3,7 @@ Contact me at: **segfault@mailfence.com**
 
 **THIS IS NOT YET READY**
 
-If you're unfamiliar with Windows internals, you should first read BACKGROUND.md, for explanations of relevant concepts.
+If you're unfamiliar with Windows internals, you should first read [[BACKGROUND.md]], for explanations of relevant concepts.
 
 This is an overview of the projects, each project folder contains a more detailed write-up in the README file.
 
@@ -25,7 +25,7 @@ This all contributes to a 'hacker mentality'; curiosity, resilience and creativi
 I do not yet have a degree, as I haven't started university yet, but that is incoming in a few years. I'm getting a masters in computer science.
 
 ## Static malware analysis engine and React front-end
-I learned React just for this.
+I'm learning React just for this.
 #### What is it?
 A website to which you can upload a file, this file will then get sent to the server and fed to a static malware analysis engine, which will score it on different tests performed, and then a final score is calculated based on these results, this final score is a number 0-100, describing how certain the engine is of it being malicious, 100 being definitely malicious.
 
@@ -55,7 +55,7 @@ You can also `get` a files, folders, groups or all entries from the database.
 I decided to make this, because while setting up a new computer, I realized I need a tool to secure important files at-rest.
 Then I thought it would be a great portfolio project and relatively simple to make.
 
-## Custom implementation of GetProcAddress and GetModule
+## [Custom implementation of GetProcAddress and GetModule](parser/README.md)
 #### What is it?
 Custom implementation of Windows GetProcAddress and GetModule API functions, which get function addresses and the base address of a given module in memory.
 This is done by parsing the Process Environment Block(PEB) to find and retrieve the given module and its base address (GetModule),
