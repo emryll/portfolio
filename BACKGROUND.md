@@ -1,14 +1,15 @@
 # Relevant background about Windows internals
 
 ## Windows API
-On windows syscalls are handled through a set of DLLs. Syscalls are how a normal application interacts with the kernel
+On windows, syscalls are handled through a set of DLLs. Syscalls are how a normal application interacts with the kernel
 
-The DLL developers are supposed to use is *kernel32.dll*, these functions are well documented by Microsoft. When you call a kernel32 function, it will call a *kernelbase.dll* function, which will finally call a *ntdll.dll* function.
+The DLL, which Developers are supposed to use is *kernel32.dll*(or kernelbase), these functions are well documented by Microsoft.
+When you call a kernel32 function, it will call a *kernelbase.dll* function, which will finally call a *ntdll.dll* function.
 
 Ntdll is older and works as the foundation for kernel32 and kernelbase functions, which are more user friendly.
 Ntdll is mostly undocumented by Microsoft, however skilled reverse-engineers have figured out a lot of things.
-These functions provide far more specific control, but you may need to do a lot of stuff manually that the kernel32/kernelbase functions do for you and the functions are more complicated to use.
-Ntdll is used for core system functionality, so every process loads ntdll.
+These functions provide far more control, but may require you to manually do things that the kernel32/kernelbase functions automatically do for you. The functions are also more complicated to use.
+Ntdll is used for core system functionality, which is why every process loads ntdll.
 
 Ntdll is what will actually make the syscall, making the connection between user-land and kernel-land. The kernel will then run the corresponding code for the function.
 
