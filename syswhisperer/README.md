@@ -16,6 +16,9 @@ The reason for using Zw functions is because Syswhispers2 is an evolution of Fre
 With Nt you cannot just search for Nt prefix, you need to also check that it doesn't start with Ntdll.
 Zw functions point to the same code and effectively are the same in user mode, so this is a clever optimization to FreshyCalls.
 
+[results](rsrc/results.PNG)
+Showing the results. SSN is needed to perform a syscall.
+
 ## Why?
 This is a technique used by both attackers and defenders and can be used to create position independent code. In particular attackers usually use this technique for (In)Direct syscalls, or a similar technique of bypassing userland API hooks.
 

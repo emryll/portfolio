@@ -140,7 +140,6 @@ BOOL whisper(SYSCALL_LIST* syscallList, PVOID* syscallVA, int* count) {
         setColor(WHITE);
         return FALSE;
     }
-    printf("[i] PE file signature: %#X\n", ntHeaders->Signature);
 
     PIMAGE_EXPORT_DIRECTORY exportsDirectory = (PIMAGE_EXPORT_DIRECTORY)((ULONG_PTR)ntBase + ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
     if (!exportsDirectory) {
