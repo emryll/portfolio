@@ -9,11 +9,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
+	"unsafe"
 
 	"github.com/fatih/color"
 
 	"golang.org/x/crypto/pbkdf2"
+	"golang.org/x/sys/windows"
 )
+
+// version 0.0.1
 
 func hashKey(key []byte) []byte {
 	hashArr := sha256.Sum256(key)
@@ -84,7 +89,7 @@ func encryptFile(path string, key []byte, salt []byte) error {
 }
 
 // ? Wrapper function
-func EncryptFile(path string, password string, db *sql.DB) error {
+func EncryptFile(path string, group string, password string, db *sql.DB) error {
 	f, err := GetFileEntryByPath(db, path)
 	if err == nil && f.Protected {
 		return fmt.Errorf("file already encrypted")
@@ -98,6 +103,19 @@ func EncryptFile(path string, password string, db *sql.DB) error {
 		err = encryptFile(path, key, salt)
 		if err != nil {
 			return err
+		}
+
+		exists, err := EntryExists(db, path)
+		if err != nil {
+			color.Red("\n[!] Error encountered while checking if %s exists, %v", path, err)
+		}
+		if exists {
+			ChangeState(db, path, true)
+		} else {
+			err = InsertFileEntry(db, path, group)
+			if err != nil {
+				color.Red("\n[!] Error encountered while adding file to database, %v\n", err)
+			}
 		}
 	}
 	return nil
@@ -169,7 +187,7 @@ func DecryptSliceOfFiles(files []File, password string, permanent bool, db *sql.
 	for _, file := range files {
 		err := DecryptFile(file.Path, password)
 		if err != nil {
-			color.Red("\n[!] Failed to encrypt %s, %v\n", file, err)
+			color.Red("\n[!] Failed to decrypt %s, %v\n", file.Path, err)
 			continue
 		}
 		if permanent {
@@ -190,16 +208,13 @@ func DecryptSliceOfFiles(files []File, password string, permanent bool, db *sql.
 
 func EncryptSliceOfFiles(paths []string, password string, group string, db *sql.DB) {
 	for _, file := range paths {
-		err := EncryptFile(file, password, db)
+		err := EncryptFile(file, group, password, db)
 		if err != nil {
 			color.Red("\n[!] Failed to encrypt %s, %v", file, err)
 			continue
 		}
 		color.Green("[+] Encrypted %s", file)
-		err = InsertFileEntry(db, file, group)
-		if err != nil {
-			color.Red("\n[!] Error encountered while adding file to database, %v\n", err)
-		}
+
 	}
 }
 
@@ -230,5 +245,178 @@ func DecryptGroup(group string, password string, permanent bool, db *sql.DB) err
 	}
 
 	DecryptSliceOfFiles(files, password, permanent, db)
+	return nil
+}
+
+func EncryptGroup(group string, password string, db *sql.DB) error {
+	files, err := GetGroup(db, group)
+	if err != nil {
+		return fmt.Errorf("failed to get group, %v", err)
+	}
+	for _, file := range files {
+		err = EncryptFile(file.Path, group, password, db)
+		if err != nil {
+			color.Red("\n[!] Failed to encrypt %s, %v", file.Path, err)
+		}
+	}
+	return nil
+}
+
+//TODO: session timer for re-encryption
+//TODO: unprotect: folder, all
+//TODO: open: folder, group, all
+
+func CheckIfInUse(filepath string) bool {
+	file, err := os.OpenFile(filepath, os.O_RDWR|os.O_EXCL, 0666)
+	if err == nil {
+		file.Close()
+		return false
+	}
+	return true
+}
+
+func createProcess(executable string, cmdLine string) error {
+	// Convert Go strings to UTF-16 pointers
+	exePtr, err := windows.UTF16PtrFromString(executable)
+	if err != nil {
+		return fmt.Errorf("failed to convert executable name: %w", err)
+	}
+	cmdPtr, err := windows.UTF16PtrFromString(cmdLine)
+	if err != nil {
+		return fmt.Errorf("failed to convert command line: %w", err)
+	}
+
+	var si windows.StartupInfo
+	var pi windows.ProcessInformation
+
+	// Create the process
+	err = windows.CreateProcess(
+		exePtr, cmdPtr,
+		nil, nil, false,
+		0, nil, nil,
+		&si, &pi,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create process: %w", err)
+	}
+	defer windows.CloseHandle(pi.Process)
+	defer windows.CloseHandle(pi.Thread)
+
+	color.Red("[+] Session process started with PID: %d\n", pi.ProcessId)
+	return nil
+}
+
+func createFileMapping(size int64) (windows.Handle, error) {
+	namePtr, err := windows.UTF16PtrFromString("Local\\MyFileMapping")
+	if err != nil {
+		return 0, fmt.Errorf("failed to convert mapping name: %w", err)
+	}
+
+	hMap, err := windows.CreateFileMapping(
+		windows.InvalidHandle, // No file backing
+		nil,                   // Default security
+		windows.PAGE_READWRITE,
+		uint32(size>>32),        // High-order DWORD of size
+		uint32(size&0xFFFFFFFF), // Low-order DWORD of size
+		namePtr,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create file mapping: %w", err)
+	}
+	return hMap, nil
+}
+
+var (
+	kernel32            = windows.NewLazySystemDLL("kernel32.dll")
+	procUnmapViewOfFile = kernel32.NewProc("UnmapViewOfFile")
+)
+
+func unmapViewOfFile(addr uintptr) error {
+	ret, _, err := procUnmapViewOfFile.Call(addr)
+	if ret == 0 {
+		return fmt.Errorf("UnmapViewOfFile failed: %w", err)
+	}
+	return nil
+}
+
+func mapViewOfFile(hMap windows.Handle, size int) ([]byte, error) {
+	ptr, err := windows.MapViewOfFile(
+		hMap,
+		windows.FILE_MAP_WRITE,
+		0, 0,
+		uintptr(size),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to map view of file: %w", err)
+	}
+
+	// Create a slice backed by the memory region
+	return unsafe.Slice((*byte)(unsafe.Pointer(ptr)), size), nil
+}
+
+// ? This is what you call in the main program.
+// ? It will initialize the new, standalone process.
+func CreateSession(password string) error {
+	// Derive key with salt and password
+	salt, err := GenerateSalt()
+	if err != nil {
+		return fmt.Errorf("failed to generate salt, %v", err)
+	}
+
+	key := DeriveKey(password, salt)
+	//! Currently this is insecure, but I will use DPAPI to secure the key
+	// create shared mem for 32 byte key
+	hMap, err := createFileMapping(int64(32))
+	if err != nil {
+		return fmt.Errorf("failed to create shared mem, %v", err)
+	}
+	defer windows.CloseHandle(hMap)
+	// bring(write) it into this processes memory space
+	sharedMem, err := mapViewOfFile(hMap, 32)
+	if err != nil {
+		return fmt.Errorf("failed to create shared mem, %v", err)
+	}
+	// write key to shared mem
+	copy(sharedMem, key)
+	err = unmapViewOfFile(uintptr(unsafe.Pointer(&sharedMem[0])))
+	if err != nil {
+		return fmt.Errorf("failed to unmap view of shared mem, %v")
+	}
+	// Create new process with "vanguard.exe -s" cmd line for session
+	err = createProcess("", "vanguard.exe -s")
+	if err != nil {
+		return fmt.Errorf("failed to create session process, %v", err)
+	}
+	return nil
+}
+
+// ? This is what the session process will call
+func CreateSessionTimer(minutes int) error {
+	// OpenFileMapping, 32*sizeof(byte)
+	// MapViewOfFile
+
+	time.Sleep(time.Duration(minutes) * time.Minute)
+
+	db, err := CreateDatabase()
+	if err != nil {
+		return fmt.Errorf("failed to open database, %v", err)
+	}
+	files, err := GetOpened(db)
+	if err != nil {
+		return fmt.Errorf("failed to get opened files, %v", err)
+	}
+
+	for _, file := range files {
+		inUse := CheckIfInUse(file.Path)
+		for inUse {
+			time.Sleep(time.Duration(5) * time.Second)
+			inUse = CheckIfInUse(file.Path)
+		}
+		// if it got to here, it's not in use (locked)
+		err = EncryptFile(file.Path, file.Group, pw, db)
+		if err != nil {
+			color.Red("\n[!] Failed to encrypt %s, %v", file.Path, err)
+		}
+	}
 	return nil
 }

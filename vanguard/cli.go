@@ -75,16 +75,14 @@ func protect(flag string, subject string, db *sql.DB) {
 			if !fileExists(subject) {
 				color.Red("\n[!] Invalid file")
 			} else {
-				fmt.Printf("\n[i] Encrypting file: %s...\n", subject)
-				EncryptFile(subject, pw, db)
-				//  Add to database
 				group, err := groupPrompt()
 				if err != nil {
 					color.Red("\n[!] Error encountered, %v\n", err)
 				}
-				err = InsertFileEntry(db, subject, group)
+				fmt.Printf("\n[i] Encrypting file: %s...\n", subject)
+				err = EncryptFile(subject, group, pw, db)
 				if err != nil {
-					color.Red("\n[!] Error encountered, %v\n", err)
+					color.Red("\n[!] Failed to encrypt file, %v", err)
 				}
 			}
 		}
@@ -105,12 +103,16 @@ func protect(flag string, subject string, db *sql.DB) {
 			}
 		}
 	case "-g":
-		_, err := promptPassword(true)
+		pw, err := promptPassword(true)
 		if err != nil {
 			color.Red("\n[!] Error encountered, %v\n", err)
 		} else {
 			fmt.Printf("[i] Encrypting group: %s...\n", subject)
 			//  Add to database
+			err = EncryptGroup(subject, pw, db)
+			if err != nil {
+				color.Red("\n[!] Error encountered while encrypting group, %v", err)
+			}
 		}
 	default:
 		fmt.Println("Valid flags for protect:\n\tNo flag: Move file to protection(encrypt)\n\t-f: Move folder to protection(encrypt)\n\t-g: Move group to protection(encrypt)\n")
@@ -139,6 +141,12 @@ func open(flag string, subject string, db *sql.DB) {
 	case "-g":
 		fmt.Printf("Open group: %s\n", subject)
 		// change state in db
+		pw, err := promptPassword(false)
+		if err != nil {
+			color.Red("\n[!] Error encountered, %v\n", err)
+		} else {
+			DecryptGroup(subject, pw, false, db)
+		}
 	case "-a":
 		fmt.Printf("Open all protected files\n")
 		// change state in db
@@ -163,7 +171,7 @@ func unprotect(flag string, subject string, db *sql.DB) {
 			if err != nil {
 				color.Red("\n[!] Error encountered, %v\n", err)
 			} else {
-				fmt.Printf("[i] Moving file: %s out of protection...\n", subject)
+				fmt.Printf("\n[i] Moving file: %s out of protection...\n", subject)
 				err = RemoveFileEntry(db, subject)
 				if err != nil {
 					color.Red("\n[!] Error encountered, %v\n", err)
@@ -178,6 +186,7 @@ func unprotect(flag string, subject string, db *sql.DB) {
 		if err != nil {
 			color.Red("\n[!] Error encountered, %v", err)
 		} else {
+			// this removes them from db
 			DecryptGroup(subject, pw, true, db)
 		}
 	case "-a":
@@ -188,18 +197,39 @@ func unprotect(flag string, subject string, db *sql.DB) {
 	}
 }
 
-// TODO: file
-// TODO: folder
-// TODO: group
-// TODO: all
+// file
+// folder
+// group
+// all
 func get(flag string, subject string, db *sql.DB) {
 	switch flag {
 	case "":
-		fmt.Printf("Get file: %s\n", subject)
+		var files []File
+		files, err := GetFile(db, subject)
+		if err != nil {
+			color.Red("\n[!] Error encountered, %v", err)
+		} else {
+			printFileData(files)
+		}
+
 	case "-f":
-		fmt.Printf("Get folder: %s\n", subject)
+		var files []File
+		files, err := GetFolder(db, subject)
+		if err != nil {
+			color.Red("\n[!] Error encountered, %v", err)
+		} else {
+			printFileData(files)
+		}
+
 	case "-g":
-		fmt.Printf("Get group: %s\n", subject)
+		var files []File
+		files, err := GetGroup(db, subject)
+		if err != nil {
+			color.Red("\n[!] Error encountered, %v", err)
+		} else {
+			printFileData(files)
+		}
+
 	case "-a":
 		var files []File
 		files, err := GetAllFiles(db)
@@ -208,6 +238,15 @@ func get(flag string, subject string, db *sql.DB) {
 		} else {
 			printFileData(files)
 		}
+	case "-o":
+		var files []File
+		files, err := GetOpened(db)
+		if err != nil {
+			color.Red("\n[!] Error encountered, %v", err)
+		} else {
+			printFileData(files)
+		}
+
 	default:
 		fmt.Println("Valid flags for get:\n\tNo flag: Get file information\n\t-f: Get information for each file in folder\n\t-g: Get information for each file in group\n\t-a: Get information for all protected files\n\n")
 	}

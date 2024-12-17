@@ -59,6 +59,7 @@ func PrintBanner(textChoice int, bannerChoice int) {
 		fmt.Println(" +#+   +#+  +#+     +#+ +#+  +#+#+# +#+   +#+# +#+    +#+ +#+     +#+ +#+    +#+ +#+    +#+")
 		fmt.Println("  #+#+#+#   #+#     #+# #+#   #+#+# #+#    #+# #+#    #+# #+#     #+# #+#    #+# #+#    #+#")
 		fmt.Println("    ###     ###     ### ###    ####  ########   ########  ###     ### ###    ### #########")
+		//fmt.Println("\t\t\t\t[ Version: 0.0.1 ]\n\t\t\t\t[ Author: emryll ]\n")
 		fmt.Println("\t\t\t\t[ Author: emryll ]\n")
 	}
 	if textChoice == 2 {
