@@ -16,10 +16,15 @@ You can find a ready-to-use compiled binary in the **bin/** folder, or you can c
 
 Vanguard can be used directly from the terminal or through an interactive shell.
 The format of a vanguard command is like this:
+
 ```<command> [flag] <subject>```
+
 For example to move a file into protection:
+
 ```protect C:/filepath/file```
+
 ...or a folder:
+
 ```protect -f C:/folderpath/```
 
 With direct commands you add vanguard infront of it.
