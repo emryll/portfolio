@@ -24,22 +24,6 @@ This all contributes to a 'hacker mentality'; curiosity, resilience and creativi
 
 I do not yet have a degree, as I haven't started university yet, but that is incoming in a few years. I'm getting a masters in computer science.
 
-## Static malware analysis engine and React front-end
-I'm learning React just for this.
-#### What is it?
-A website to which you can upload a file, this file will then get sent to the server and fed to a static malware analysis engine, which will score it on different tests performed, and then a final score is calculated based on these results, this final score is a number 0-100, describing how certain the engine is of it being malicious, 100 being definitely malicious.
-
-The tests include:
-    - A large list of YARA rules, including rules for detecting different process injection techniques.
-    - Examining imports via PEB walk and PE parsing
-    - Traditional hash-based signatures
-
-Front-end written with React.
-
-#### Why?
-I am deeply passionate about computer science and cybersecurity. The past year or two I've been reading about this kind of stuff a lot, this was a very fun project for me!
-While this won't detect some more advanced malware, this should still detect known malware and a majority of less sophisticated malware.
-
 ## [At-rest encryption CLI-tool](vanguard/README.md)
 #### What is it?
 A tool for protecting important files with an interactive shell and CLI commands serving as the UI.
@@ -71,9 +55,7 @@ A custom implementation of GetProcAddress and GetModule allows the bypassing of 
 For cyber security professionals, the defending party, it is critical to understand how the attackers may attack, in order to protect against this.
 For example what I would do to detect this technique, is create a YARA rule for this parsing of PE headers and PEB, as these offsets are constant and this is not something benign programs typically do.
 
-## [IAT hook and IAT hook detector](iathook/README.md)
-#### What is it?
-Import Address Table(IAT) hooking demonstration as well as a detection mechanism I came up with. Modern programs use shared libraries for modularity. When a program calls an imported shared library function, it will basically say: jump to the address, which is located in the IAT at position n, then it will execute the function located at that address in memory.
+## [IAT hook and IAT hood in the IAT at position n, then it will execute the function located at that address in memory.
 With IAT hooking, the address is changed to point to a different function, so when function A is called, it will actually point to function B, executing that code.
 
 #### My approach to IAT hook detection
@@ -87,15 +69,10 @@ This IAT hook detector will check if a given process' modules' IATs are hooked. 
 #### Why?
 IAT hooking is a commonly used technique by malware and security products, this IAT hook detector binary is also modular, so I can seemlessly incorporate it into my upcoming EDR project!
 
-## Syswhispers2 proof-of-concept
+## [Syswhispers2 proof-of-concept](syswhisperer/README.md)
 #### What is it?
-Syswhispers2 is a smart technique of resolving System Service Numbers(SSN) as well as function addresses. The way this works is, first you walk the PEB to find the target module.
-Then you go to the image base address of that module where the PE headers are located. Then you parse the PE headers to get to the Export Address Table(EAT), there you go through the AddressOfNames array and save every Zw function (Nt and Zw functions point to same code and are the same in usermode). You get addresses through the other 2 arrays, AddressOfNameOrdinals and AddressOfFunctions.
-Once you have all Zw functions and their addresses, you can simply sort them by address, because SSNs are in order. 0th Zw function will have SSN 0, and so on.
-
-#### My approach for detection
-Since this is based on walking the PEB and parsing the PE headers, which is abnormal for benign applications, this is what I would use to detect this (and a lot of similar stuff).
-The offsets are fixed so you can create a YARA rule to detect it. Just getting the PEB should raise red flags (x64:*GS+0x60* / x86:*FS+0x30*)
+Syswhispers2 is a smart technique of resolving System Service Numbers(SSN) as well as function addresses. This is done through a *PEB walk* to obtain ntdll's base address.
+Then parsing the PE headers to get the Export Address Table. There you can get every Zw function (Nt and Zw functions point to same code and are the same in usermode). With a list of all Zw functions and their addresses, you can simply sort them by address, because SSNs are in order. 0th Zw function will have SSN 0, and so on.
 
 #### Why?
 This is a technique used by both attackers and defenders and can be used to create position independent code. In particular attackers usually use this technique for (In)Direct syscalls, or a similar technique of bypassing userland API hooks.
@@ -103,4 +80,6 @@ This is a technique used by both attackers and defenders and can be used to crea
 ## Projects in the pipeline
 Check out the Projects in the pipeline folder for projects which I have planned out but not yet gotten to coding them, as I'm coding something else.
     - Static malware analysis engine and React frontend
-    - Custom EDR from scratch: An advanced cybersecurity tool to detect and mitigate threats in real-time
+    - Custom EDR from scratch: An advanced cybersecurity tool to detect and mitigate threats in real-timek detector](iathook/README.md)
+#### What is it?
+Import Address Table(IAT) hooking demonstration as well as a detection mechanism I came up with. Modern programs use shared libraries for modularity. When a program calls an imported shared library function, it will basically say: jump to the address, which is locate
