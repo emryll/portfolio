@@ -24,6 +24,22 @@ This all contributes to a 'hacker mentality'; curiosity, resilience and creativi
 
 I do not yet have a degree, as I haven't started university yet, but that is incoming in a few years. I'm getting a masters in computer science.
 
+## Static malware analysis engine and React front-end
+I'm learning React just for this.
+#### What is it?
+A website to which you can upload a file, this file will then get sent to the server and fed to a static malware analysis engine, which will score it on different tests performed, and then a final score is calculated based on these results, this final score is a number 0-100, describing how certain the engine is of it being malicious, 100 being definitely malicious.
+
+The tests include:
+    - A large list of YARA rules, including rules for detecting different process injection techniques.
+    - Examining imports via PEB walk and PE parsing
+    - Traditional hash-based signatures
+
+Front-end written with React.
+
+#### Why?
+I am deeply passionate about computer science and cybersecurity. The past year or two I've been reading about this kind of stuff a lot, this was a very fun project for me!
+While this won't detect some more advanced malware, this should still detect known malware and a majority of less sophisticated malware.
+
 ## [At-rest encryption CLI-tool](vanguard/README.md)
 #### What is it?
 A tool for protecting important files with an interactive shell and CLI commands serving as the UI.
@@ -55,16 +71,15 @@ A custom implementation of GetProcAddress and GetModule allows the bypassing of 
 For cyber security professionals, the defending party, it is critical to understand how the attackers may attack, in order to protect against this.
 For example what I would do to detect this technique, is create a YARA rule for this parsing of PE headers and PEB, as these offsets are constant and this is not something benign programs typically do.
 
-## [IAT hook and IAT hood in the IAT at position n, then it will execute the function located at that address in memory.
+## [IAT hook and IAT hook detector](iathook/README.md)
+For each imported function a module imports, the [Import Address Table](BACKGROUND.md) contains an entry connecting the function name to an address in memory.
+When a program calls an imported function, what happens is the system will get the corresponding entry in the IAT and jump to that address.
+
 With IAT hooking, the address is changed to point to a different function, so when function A is called, it will actually point to function B, executing that code.
 
 #### My approach to IAT hook detection
-I almost immediately got the idea that since KnownDLLs (like kernel32.dll and ntdll.dll) are located at the same address across processes for memory efficiency, you can get the function addresses from two processes and compare them, to see if one of them is hooked. Assuming you can't know for sure any single process is not hooked, you would have to check a third one to see which 2 are correct. It would still be possible that all those are hooked resulting on a false negative, but that would be unlikely.
-
-After a little bit I realized I could instead just compare against the EAT addresses. It is possible to hook the EAT although less common and a little bit more tricky,
-however when this is integrated to an EDR or similar, you can compare every processes addresses, there is no way(realistically) that all of the IATs and EATs in all the processes would be hooked. I'm doing this through code injection into the target process.
-
-This IAT hook detector will check if a given process' modules' IATs are hooked. Due to the modular design, this can be easily integrated into an EDR, by looping through processes and calling this binary for them. In this real-world use-case, it will actually be more accurate, since we have now checked every address, so if one is different, that means a hook.
+I'm detecting IAT hooking by injecting a DLL into the target process, which will then compare a functions addresses in the Import Address Table and Export Address Table to see if they match.
+It is technically possible to hook both IAT and EAT, however this is unlikely.
 
 #### Why?
 IAT hooking is a commonly used technique by malware and security products, this IAT hook detector binary is also modular, so I can seemlessly incorporate it into my upcoming EDR project!
