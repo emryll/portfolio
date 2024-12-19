@@ -24,22 +24,6 @@ This all contributes to a 'hacker mentality'; curiosity, resilience and creativi
 
 I do not yet have a degree, as I haven't started university yet, but that is incoming in a few years. I'm getting a masters in computer science.
 
-## Static malware analysis engine and React front-end
-I'm learning React just for this.
-#### What is it?
-A website to which you can upload a file, this file will then get sent to the server and fed to a static malware analysis engine, which will score it on different tests performed, and then a final score is calculated based on these results, this final score is a number 0-100, describing how certain the engine is of it being malicious, 100 being definitely malicious.
-
-The tests include:
-    - A large list of YARA rules, including rules for detecting different process injection techniques.
-    - Examining imports via PEB walk and PE parsing
-    - Traditional hash-based signatures
-
-Front-end written with React.
-
-#### Why?
-I am deeply passionate about computer science and cybersecurity. The past year or two I've been reading about this kind of stuff a lot, this was a very fun project for me!
-While this won't detect some more advanced malware, this should still detect known malware and a majority of less sophisticated malware.
-
 ## [At-rest encryption CLI-tool](vanguard/README.md)
 #### What is it?
 A tool for protecting important files with an interactive shell and CLI commands serving as the UI.
