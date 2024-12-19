@@ -1,5 +1,8 @@
 package main
 
+//#include "session.h"
+import "C"
+
 import (
 	"crypto/aes"
 	"crypto/cipher"
@@ -9,13 +12,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 	"unsafe"
 
 	"github.com/fatih/color"
-
 	"golang.org/x/crypto/pbkdf2"
-	"golang.org/x/sys/windows"
 )
 
 // version 0.0.1
@@ -25,7 +25,6 @@ func hashKey(key []byte) []byte {
 	return hashArr[:]
 }
 
-// works
 func GenerateSalt() ([]byte, error) {
 	salt := make([]byte, 16)
 	_, err := rand.Read(salt)
@@ -35,12 +34,12 @@ func GenerateSalt() ([]byte, error) {
 	return salt, nil
 }
 
-// ? Turn password to key, works
+// ? Turn password to key
 func DeriveKey(password string, salt []byte) []byte {
 	return pbkdf2.Key([]byte(password), salt, 100000, 32, sha256.New) // 100000 iterations, 32 bytes for AES-256
 }
 
-// ? Check if the provided password matches the stored key, works
+// ? Check if the provided password matches the stored key
 func ValidatePassword(providedPassword string, storedSalt []byte, hashedKey []byte) bool {
 	derivedKey := DeriveKey(providedPassword, storedSalt)
 	hash := hashKey(derivedKey)
@@ -52,8 +51,11 @@ func ValidatePassword(providedPassword string, storedSalt []byte, hashedKey []by
 	return true
 }
 
-// ? Read file, encrypt data, write file back out
-func encryptFile(path string, key []byte, salt []byte) error {
+// ? Read file, encrypt data, write file back out. Nothing more
+func encryptFile(path string, key []byte, salt []byte, silent bool) error {
+	if !silent {
+		fmt.Printf("\n[i] Encrypting file: %s\n", path)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -61,12 +63,12 @@ func encryptFile(path string, key []byte, salt []byte) error {
 	// new aes cipher using 32 byte key
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	// new gcm instance
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	// generate random nonce
@@ -75,7 +77,9 @@ func encryptFile(path string, key []byte, salt []byte) error {
 
 	// encrypt and write changes
 	ciphertext := gcm.Seal(nonce, nonce, data, nil)
-	color.Green("[+] Encrypted data")
+	if !silent {
+		color.Green("[+] Encrypted data")
+	}
 
 	hashedKey := hashKey(key)
 	ciphertext = append(salt, ciphertext...)
@@ -84,11 +88,13 @@ func encryptFile(path string, key []byte, salt []byte) error {
 	if err != nil {
 		return err
 	}
-	color.Green("[+] Wrote changes to file succesfully\n")
+	if !silent {
+		color.Green("[+] Wrote changes to file succesfully\n")
+	}
 	return nil
 }
 
-// ? Wrapper function
+// ? Wrapper function that takes care of everything
 func EncryptFile(path string, group string, password string, db *sql.DB) error {
 	f, err := GetFileEntryByPath(db, path)
 	if err == nil && f.Protected {
@@ -100,7 +106,7 @@ func EncryptFile(path string, group string, password string, db *sql.DB) error {
 		}
 		key := DeriveKey(password, salt)
 
-		err = encryptFile(path, key, salt)
+		err = encryptFile(path, key, salt, false)
 		if err != nil {
 			return err
 		}
@@ -121,7 +127,9 @@ func EncryptFile(path string, group string, password string, db *sql.DB) error {
 	return nil
 }
 
+// ? Decrypt the provided data and write it out to the path. Nothing more
 func decryptFile(path string, ciphertext []byte, key []byte) error {
+	fmt.Printf("\n[i] Decrypting %s...\n", path)
 	// Create AES cipher block using the provided key
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -152,16 +160,16 @@ func decryptFile(path string, ciphertext []byte, key []byte) error {
 	if err != nil {
 		return err
 	}
-	color.Green("[+] Wrote changes to disk\n")
+	color.Green("[+] Wrote changes to disk\n\n")
 	return nil
 }
 
-// ? Wrapper function
-func DecryptFile(path string, password string) error {
+// ? Wrapper function, takes care of everything
+func DecryptFile(path string, password string, db *sql.DB, permanent bool) error {
 	// get salt from beginning of file
 	ciphertext, err := os.ReadFile(path)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	hash := ciphertext[:32]
 	salt := ciphertext[32 : 32+16]
@@ -172,36 +180,45 @@ func DecryptFile(path string, password string) error {
 		color.Red("\n[!] Hash comparison failed, incorrect password\n")
 	} else {
 		color.Green("[+] Password is valid!\n")
-	}
 
-	key := DeriveKey(password, salt)
+		key := DeriveKey(password, salt)
 
-	err = decryptFile(path, ciphertext, key)
-	if err != nil {
-		return err
+		err = decryptFile(path, ciphertext, key)
+		if err != nil {
+			return err
+		}
+
+		if permanent {
+			// remove entry
+			fmt.Printf("[i] Moving file: %s out of protection...\n", path)
+			err = RemoveFileEntry(db, path)
+			if err != nil {
+				color.Red("\n[!] Error encountered, %v", err)
+			}
+		} else {
+			// change state
+			err = ChangeState(db, path, false)
+			if err != nil {
+				color.Red("\n[!] Failed to change %s's state, %v", path, err)
+			}
+			// go routine so this isnt blocking
+			go func() {
+				err = CreateSession(password)
+				if err != nil {
+					color.Red("\n[!] Failed to create session timer: %v", err)
+				}
+			}()
+		}
 	}
 	return nil
 }
 
 func DecryptSliceOfFiles(files []File, password string, permanent bool, db *sql.DB) {
 	for _, file := range files {
-		err := DecryptFile(file.Path, password)
+		err := DecryptFile(file.Path, password, db, permanent)
 		if err != nil {
 			color.Red("\n[!] Failed to decrypt %s, %v\n", file.Path, err)
 			continue
-		}
-		if permanent {
-			// remove entry
-			err = RemoveFileEntry(db, file.Path)
-			if err != nil {
-				color.Red("\n[!] Error encountered, %v", err)
-			}
-		} else {
-			// change state
-			err = ChangeState(db, file.Path, false)
-			if err != nil {
-				color.Red("\n[!] Failed to change %s's state, %v", file.Path, err)
-			}
 		}
 	}
 }
@@ -238,6 +255,15 @@ func EncryptFolderRecursively(path string, password string, group string, db *sq
 	return files
 }
 
+func DecryptFolderRecursively(path string, password string, permanent bool, db *sql.DB) error {
+	files, err := GetFolder(db, path)
+	if err != nil {
+		return fmt.Errorf("failed to get folder %s: %v", path, err)
+	}
+	DecryptSliceOfFiles(files, password, permanent, db)
+	return nil
+}
+
 func DecryptGroup(group string, password string, permanent bool, db *sql.DB) error {
 	files, err := GetGroup(db, group)
 	if err != nil {
@@ -262,9 +288,14 @@ func EncryptGroup(group string, password string, db *sql.DB) error {
 	return nil
 }
 
-//TODO: session timer for re-encryption
-//TODO: unprotect: folder, all
-//TODO: open: folder, group, all
+func DecryptAll(password string, permanent bool, db *sql.DB) error {
+	files, err := GetAllFiles(db)
+	if err != nil {
+		return fmt.Errorf("failed to get all files: %v", err)
+	}
+	DecryptSliceOfFiles(files, password, permanent, db)
+	return nil
+}
 
 func CheckIfInUse(filepath string) bool {
 	file, err := os.OpenFile(filepath, os.O_RDWR|os.O_EXCL, 0666)
@@ -275,148 +306,20 @@ func CheckIfInUse(filepath string) bool {
 	return true
 }
 
-func createProcess(executable string, cmdLine string) error {
-	// Convert Go strings to UTF-16 pointers
-	exePtr, err := windows.UTF16PtrFromString(executable)
-	if err != nil {
-		return fmt.Errorf("failed to convert executable name: %w", err)
-	}
-	cmdPtr, err := windows.UTF16PtrFromString(cmdLine)
-	if err != nil {
-		return fmt.Errorf("failed to convert command line: %w", err)
-	}
-
-	var si windows.StartupInfo
-	var pi windows.ProcessInformation
-
-	// Create the process
-	err = windows.CreateProcess(
-		exePtr, cmdPtr,
-		nil, nil, false,
-		0, nil, nil,
-		&si, &pi,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create process: %w", err)
-	}
-	defer windows.CloseHandle(pi.Process)
-	defer windows.CloseHandle(pi.Thread)
-
-	color.Red("[+] Session process started with PID: %d\n", pi.ProcessId)
-	return nil
-}
-
-func createFileMapping(size int64) (windows.Handle, error) {
-	namePtr, err := windows.UTF16PtrFromString("Local\\MyFileMapping")
-	if err != nil {
-		return 0, fmt.Errorf("failed to convert mapping name: %w", err)
-	}
-
-	hMap, err := windows.CreateFileMapping(
-		windows.InvalidHandle, // No file backing
-		nil,                   // Default security
-		windows.PAGE_READWRITE,
-		uint32(size>>32),        // High-order DWORD of size
-		uint32(size&0xFFFFFFFF), // Low-order DWORD of size
-		namePtr,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create file mapping: %w", err)
-	}
-	return hMap, nil
-}
-
-var (
-	kernel32            = windows.NewLazySystemDLL("kernel32.dll")
-	procUnmapViewOfFile = kernel32.NewProc("UnmapViewOfFile")
-)
-
-func unmapViewOfFile(addr uintptr) error {
-	ret, _, err := procUnmapViewOfFile.Call(addr)
-	if ret == 0 {
-		return fmt.Errorf("UnmapViewOfFile failed: %w", err)
-	}
-	return nil
-}
-
-func mapViewOfFile(hMap windows.Handle, size int) ([]byte, error) {
-	ptr, err := windows.MapViewOfFile(
-		hMap,
-		windows.FILE_MAP_WRITE,
-		0, 0,
-		uintptr(size),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to map view of file: %w", err)
-	}
-
-	// Create a slice backed by the memory region
-	return unsafe.Slice((*byte)(unsafe.Pointer(ptr)), size), nil
-}
-
 // ? This is what you call in the main program.
-// ? It will initialize the new, standalone process.
+// ? It will initialize the session timer in seperate process.
 func CreateSession(password string) error {
-	// Derive key with salt and password
 	salt, err := GenerateSalt()
 	if err != nil {
 		return fmt.Errorf("failed to generate salt, %v", err)
 	}
 
 	key := DeriveKey(password, salt)
-	//! Currently this is insecure, but I will use DPAPI to secure the key
-	// create shared mem for 32 byte key
-	hMap, err := createFileMapping(int64(32))
-	if err != nil {
-		return fmt.Errorf("failed to create shared mem, %v", err)
-	}
-	defer windows.CloseHandle(hMap)
-	// bring(write) it into this processes memory space
-	sharedMem, err := mapViewOfFile(hMap, 32)
-	if err != nil {
-		return fmt.Errorf("failed to create shared mem, %v", err)
-	}
-	// write key to shared mem
-	copy(sharedMem, key)
-	err = unmapViewOfFile(uintptr(unsafe.Pointer(&sharedMem[0])))
-	if err != nil {
-		return fmt.Errorf("failed to unmap view of shared mem, %v")
-	}
-	// Create new process with "vanguard.exe -s" cmd line for session
-	err = createProcess("", "vanguard.exe -s")
-	if err != nil {
-		return fmt.Errorf("failed to create session process, %v", err)
-	}
-	return nil
-}
 
-// ? This is what the session process will call
-func CreateSessionTimer(minutes int) error {
-	// OpenFileMapping, 32*sizeof(byte)
-	// MapViewOfFile
-
-	time.Sleep(time.Duration(minutes) * time.Minute)
-
-	db, err := CreateDatabase()
-	if err != nil {
-		return fmt.Errorf("failed to open database, %v", err)
-	}
-	files, err := GetOpened(db)
-	if err != nil {
-		return fmt.Errorf("failed to get opened files, %v", err)
-	}
-
-	for _, file := range files {
-		inUse := CheckIfInUse(file.Path)
-		for inUse {
-			time.Sleep(time.Duration(5) * time.Second)
-			inUse = CheckIfInUse(file.Path)
-		}
-		// if it got to here, it's not in use (locked)
-		err = EncryptFile(file.Path, file.Group, pw, db)
-		if err != nil {
-			color.Red("\n[!] Failed to encrypt %s, %v", file.Path, err)
-		}
+	// Both shared mem and named pipes refused to work in go so i went with c
+	ok := C.CreateSessionProcess((*C.uchar)(unsafe.Pointer(&key[0])), (*C.uchar)(unsafe.Pointer(&salt[0])))
+	if ok == 0 {
+		return fmt.Errorf("failed to create session process")
 	}
 	return nil
 }

@@ -272,7 +272,9 @@ func ChangeState(db *sql.DB, path string, isProtected bool) error {
 	if err != nil {
 		return err
 	}
-	color.Green("[+] Updated %d row(s)\n", rowsAffected)
+	if rowsAffected == 0 {
+		return fmt.Errorf("failed to change state for %s", path)
+	}
 	return nil
 }
 

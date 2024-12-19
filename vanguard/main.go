@@ -6,6 +6,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// version 0.0.1
+
+var timer bool
+
 func PrintBanner(textChoice int, bannerChoice int) {
 	if bannerChoice == 1 {
 		fmt.Println("  ,   A           {}           ,   A           {}")
@@ -62,27 +66,6 @@ func PrintBanner(textChoice int, bannerChoice int) {
 		//fmt.Println("\t\t\t\t[ Version: 0.0.1 ]\n\t\t\t\t[ Author: emryll ]\n")
 		fmt.Println("\t\t\t\t[ Author: emryll ]\n")
 	}
-	if textChoice == 2 {
-		fmt.Println("     ##### /      ##                                                                    ##")
-		fmt.Println("  ######  /    #####                                                                     ##")
-		fmt.Println(" /#   /  /       #####                                                                   ##")
-		fmt.Println("/    /  ##       / ##                                                                    ##")
-		fmt.Println("    /  ###      /                                                                        ##")
-		fmt.Println("   ##   ##      #   /###   ###  /###     /###    ##   ####      /###   ###  /###     ### ##")
-		fmt.Println("   ##   ##      /  / ###  / ###/ #### / /  ###  / ##    ###  / / ###  / ###/ #### / #########")
-		fmt.Println("   ##   ##     /  /   ###/   ##   ###/ /    ###/  ##     ###/ /   ###/   ##   ###/ ##   #### ")
-		fmt.Println("   ##   ##     # ##    ##    ##    ## ##     ##   ##      ## ##    ##    ##        ##    ## ")
-		fmt.Println("   ##   ##     / ##    ##    ##    ## ##     ##   ##      ## ##    ##    ##        ##    ## ")
-		fmt.Println("    ##  ##    /  ##    ##    ##    ## ##     ##   ##      ## ##    ##    ##        ##    ## ")
-		fmt.Println("     ## #     #  ##    ##    ##    ## ##     ##   ##      ## ##    ##    ##        ##    ## ")
-		fmt.Println("      ###     /  ##    /#    ##    ## ##     ##   ##      /# ##    /#    ##        ##    /# ")
-		fmt.Println("       ######/    ####/ ##   ###   ### ########    ######/ ## ####/ ##   ###        ####/  ")
-		fmt.Println("         ###       ###   ##   ###   ###  ### ###    #####   ## ###   ##   ###        ###  ")
-		fmt.Println("                                              ### ")
-		fmt.Println("                                        ####   ### ")
-		fmt.Println("                                      /######  /#  ")
-		fmt.Println("                                     /     ###/\n")
-	}
 }
 
 var rootCmd = &cobra.Command{
@@ -90,6 +73,10 @@ var rootCmd = &cobra.Command{
 	Short: "A CLI at-rest encryption tool to secure your files",
 	Long:  "Vanguard is a CLI tool you can use to encrypt and decrypt files or folders with AES-256 encryption, using salting and key derivation through PBKDF2.\nYou can use commands or the interactive shell.",
 	Run:   startShell,
+}
+
+func init() {
+	rootCmd.Flags().BoolVarP(&timer, "timer", "t", false, "Used to create session timer process")
 }
 
 func Execute() {

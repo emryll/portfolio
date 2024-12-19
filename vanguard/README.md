@@ -7,7 +7,7 @@
 - Safe key derivation from password with PBKDF2.
 - CLI commands and an interactive shell.
 - Local database to keep track of protected files.
-- (upcoming) session timer process to automatically re-encrypt files after use.
+- Session timer process to automatically re-encrypt files after use.
 
 ![screenshot](rsrc/screenshot1.PNG)
 
@@ -31,10 +31,12 @@ With direct commands you add vanguard infront of it.
 
 There are 4 main commands:
 - **protect:** Move a file into protection. (encrypt and add to database)
-- **open:** Temporarily decrypt a file. (decrypt file and change state in database)
-    (once I implement sessions, this will launch a session)
+- **open:** Temporarily decrypt a file, launching a session timer in a seperate process. Once the timer runs out it will re-encrypt opened files (decrypt file and change state in database)
 - **unprotect:** Move a file out of protection. (decrypt and remove from database)
 - **get:** Query files from the database.
 
 ## Why?
 I got the idea for this project while setting up a new laptop. I was thinking about the security setup and I realized I should have a tool to encrypt important files, where they would be encrypted in the normal state.
+
+This way just getting access to the disk does not grant access to important files.
+Also when youre sending files between devices, the files will automatically be encrypted in transit, since the file in it's normal form is encrypted.
