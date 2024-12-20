@@ -89,5 +89,7 @@ This is a technique used by both attackers and defenders and can be used to crea
 
 ## Projects in the pipeline
 Check out the Projects in the pipeline folder for projects which I have planned out but not yet gotten to coding them, as I'm coding something else.
+    
     - Static malware analysis engine and React frontend
+    
     - Custom EDR from scratch: An advanced cybersecurity tool to detect and mitigate threats in real-timek detector](iathook/README.md)
