@@ -18,8 +18,8 @@ I'm a very curious person and have always been. I'm always wondering: "How does 
 I keep diving deeper into the rabbit hole of information..
 
 My other hobbies; art and skateboarding also give me an edge when it comes to programming and cybersecurity, let me elaborate:
-    * **Art** teaches creative thinking, not only for creating visual stuff, but also for thinking outside of the box, approaching problems differently.
-    * In **skateboarding** you have to try a trick 1000 times before you get it. Skateboarding teaches you to keep trying, getting hit, falling down, but still getting up and trying again.
+    + **Art** teaches creative thinking, not only for creating visual stuff, but also for thinking outside of the box, approaching problems differently.
+    + In **skateboarding** you have to try a trick 1000 times before you get it. Skateboarding teaches you to keep trying, getting hit, falling down, but still getting up and trying again.
 
 This all contributes to a 'hacker mentality'; curiosity, resilience and creativity.
 
@@ -87,5 +87,5 @@ This is a technique used by both attackers and defenders and can be used to crea
 
 ## Projects in the pipeline
 Check out the Projects in the pipeline folder for projects which I have planned out but not yet gotten to coding them, as I'm coding something else.
-    * Static malware analysis engine and React frontend
-    * Custom EDR from scratch: An advanced cybersecurity tool to detect and mitigate threats in real-timek detector](iathook/README.md)
+    + Static malware analysis engine and React frontend
+    + Custom EDR from scratch: An advanced cybersecurity tool to detect and mitigate threats in real-timek detector](iathook/README.md)
