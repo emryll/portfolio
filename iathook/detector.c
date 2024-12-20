@@ -2,28 +2,12 @@
 #include <winternl.h>
 #include <string.h>
 #include <stdio.h>
+#include "detector.h"
 
 #define WHITE 0x7
 #define GREEN 0x2
 #define RED 0x4
 #define PE_SIGNATURE 0x4550
-#define MAX_ENTRIES 3000
-
-typedef struct FN_ENTRY {
-    PVOID Address;
-    char Name[256];
-    char ExportedBy[256];
-} FN_ENTRY;
-
-typedef struct FN_ADDRESSES {
-    DWORD Count;
-    FN_ENTRY Entries[MAX_ENTRIES];
-} FN_ADDRESSES;
-
-typedef struct RESULTS {
-    BOOL Hooked;
-    FN_ADDRESSES HookedList;
-} RESULTS;
 
 PPEB getPEB() {
     return (PPEB)__readgsqword(0x60);  // For x64
@@ -108,7 +92,7 @@ PVOID getFuncAddress(PVOID moduleBase, LPCSTR funcName) {
     return NULL;
 }
 
-BOOL getModuleIATAddresses(PVOID moduleBase, FN_ADDRESSES* IATList) {
+BOOL getModuleIATAddresses(PVOID moduleBase, FN_ADDRESSES* IATList, UNICODE_STRING* modName) {
     //? Parse PE headers located at moduleBase in memory, to get the Export Address Table
     PIMAGE_DOS_HEADER dosHeaders = (PIMAGE_DOS_HEADER)moduleBase;
     PIMAGE_NT_HEADERS ntHeaders = (PIMAGE_NT_HEADERS)((ULONG_PTR)moduleBase + dosHeaders->e_lfanew);
@@ -129,9 +113,7 @@ BOOL getModuleIATAddresses(PVOID moduleBase, FN_ADDRESSES* IATList) {
         if (strcmp(libraryName, "") == 0) {
             break;
         }
-        //if (strncmp(libraryName, "api-ms-win", strlen("api-ms-win")) == 0) {
-        //    continue;
-        //}
+    
         PIMAGE_THUNK_DATA originalFirstThunk = NULL, firstThunk = NULL;
         originalFirstThunk = (PIMAGE_THUNK_DATA)((DWORD_PTR)moduleBase + importDescriptor->OriginalFirstThunk);
         firstThunk = (PIMAGE_THUNK_DATA)((DWORD_PTR)moduleBase + importDescriptor->FirstThunk);
@@ -142,27 +124,36 @@ BOOL getModuleIATAddresses(PVOID moduleBase, FN_ADDRESSES* IATList) {
             if (originalFirstThunk == NULL || firstThunk == NULL) {
                 printf("[!] NULL pointer\n");
             }
-            //if (((uintptr_t)firstThunk) % sizeof(void*) != 0) {
-            //    printf("[!] Misaligned pointer at entry %d\n", IATList->Count);
-            //    continue;
-            //}
+            
             if (firstThunk->u1.Function == 0) {
+                originalFirstThunk++;
+                firstThunk++;
                 continue;
             }
             //? kernelbase is getting here
-            if (IATList->Count == MAX_ENTRIES) {
+            if (IATList->Count == MAX_ENTRIES-1) {
                 printf("[i] Function limit reached...\n");
                 break;
             }
-            printf("[i] originalFirstThunk: %#x, firstThunk: %#x\n", originalFirstThunk, firstThunk);
-            printf("[i] AddressOfData alignment: %d\n", ((uintptr_t)originalFirstThunk->u1.AddressOfData) % sizeof(void*));
-            printf("[i] firstThunk alignment: %d\n", ((uintptr_t)firstThunk) % sizeof(void*));
             functionName = (PIMAGE_IMPORT_BY_NAME)((DWORD_PTR)moduleBase + originalFirstThunk->u1.AddressOfData);
-            printf("%s", functionName->Name);
+            if ((SIZE_T)functionName & 0xff00000000000000) {
+                //printf("[*] Skipping proxied import\n");
+                originalFirstThunk++;
+                firstThunk++;
+                continue;
+            }
+
+            if (firstThunk->u1.Function == 0) {
+                printf("[i] Skipping null function entry\n");
+                originalFirstThunk++;
+                firstThunk++;
+                continue;
+            }
+            //printf("%s", functionName->Name);
             IATList->Entries[IATList->Count].Address = (PVOID)firstThunk->u1.Function;
-            strcpy(IATList->Entries[IATList->Count].Name, functionName->Name);
+            strncpy(IATList->Entries[IATList->Count].Name, functionName->Name, 255);
             strcpy(IATList->Entries[IATList->Count].ExportedBy, libraryName);
-            printf("[i] %s!%s: %#x  , %d\n", IATList->Entries[IATList->Count].ExportedBy, IATList->Entries[IATList->Count].Name, IATList->Entries[IATList->Count].Address, IATList->Count);
+            //printf("[i] %s!%s: %#x  , %d\n", IATList->Entries[IATList->Count].ExportedBy, IATList->Entries[IATList->Count].Name, IATList->Entries[IATList->Count].Address, IATList->Count);
             IATList->Count++;
             originalFirstThunk++;
             firstThunk++;
@@ -172,45 +163,21 @@ BOOL getModuleIATAddresses(PVOID moduleBase, FN_ADDRESSES* IATList) {
     return TRUE;
 }
 
-//? I kept getting false positives on these functions so I'm ignoring them
-BOOL criticalFunction(LPCSTR fName) {
-    if (strcmp(fName, "DeleteCriticalSection") == 0 || strcmp(fName, "EnterCriticalSection") == 0) {
-        return TRUE;
-    }
-    if (strcmp(fName, "InitializeCriticalSection") == 0 || strcmp(fName, "LeaveCriticalSection") == 0) {
-        return TRUE;
-    }
-    return FALSE;
-}
-
 void compareAddresses(FN_ADDRESSES* IATList, RESULTS* results) {
     int failedCount = 0;
-    printf("[i] iat count: %d\n", IATList->Count);
     for (DWORD i = 0; i < IATList->Count; i++) {
         if (strncmp(IATList->Entries[i].ExportedBy, "api-ms-win", strlen("api-ms-win")) == 0) {
             continue;
         }
-        size_t len = mbstowcs(NULL, IATList->Entries[i].ExportedBy, 0);  // Get the required size
-        if (len == (size_t)-1) {
-            printf("\n[!] mbstowcs failed\n");
-            continue;
-        }
-
-        wchar_t* wideStr = (wchar_t*)malloc((len + 1) * sizeof(wchar_t));
-        if (wideStr == NULL) {
-            printf("\n[!] malloc failed\n");
-            continue;
-        }
-        mbstowcs(wideStr, IATList->Entries[i].ExportedBy, len + 1);
-
-        PVOID moduleBase = getModuleBase(wideStr);
+        
+        HMODULE moduleBase = GetModuleHandleA(IATList->Entries[i].ExportedBy);
         if (moduleBase == NULL) {
             failedCount++;
             continue;
         }
-        free(wideStr);
 
-        PVOID EATAddress = getFuncAddress(moduleBase, IATList->Entries[i].Name);
+        //PVOID EATAddress = getFuncAddress(moduleBase, IATList->Entries[i].Name);
+        PVOID EATAddress = GetProcAddress(moduleBase, IATList->Entries[i].Name);
         if (EATAddress == NULL) {
             printf("\n[!] Failed to get EAT address for %s\n\n", IATList->Entries[i].Name);
             failedCount++;
@@ -218,12 +185,12 @@ void compareAddresses(FN_ADDRESSES* IATList, RESULTS* results) {
         }
 
         if (EATAddress != IATList->Entries[i].Address) {
-            if (criticalFunction(IATList->Entries[i].Name)) {
-                continue;
-            }
-            setColor(RED);
-            printf("\n\t[!] IAT-EAT mismatch found on %s!%s\n\t\t\\==={ Address in IAT: %#x\n\t\t \\=={ Address in EAT: %#x\n\n", IATList->Entries[i].ExportedBy, IATList->Entries[i].Name, IATList->Entries[i].Address, EATAddress);
-            setColor(WHITE);
+            //if (criticalFunction(IATList->Entries[i].Name)) {
+            //    continue;
+            //}
+            //setColor(RED);
+            //printf("\n\t[!] IAT-EAT mismatch found on %s!%s\n\t\t\\==={ Address in IAT: %#x\n\t\t \\=={ Address in EAT: %#x\n\n", IATList->Entries[i].ExportedBy, IATList->Entries[i].Name, IATList->Entries[i].Address, EATAddress);
+            //setColor(WHITE);
             //? Update results
             if (results->Hooked == FALSE) { results->Hooked = TRUE; }
             if (results->HookedList.Count == MAX_ENTRIES) {
@@ -235,13 +202,15 @@ void compareAddresses(FN_ADDRESSES* IATList, RESULTS* results) {
                 strncpy(results->HookedList.Entries[results->HookedList.Count].ExportedBy, IATList->Entries[i].ExportedBy, 255);
                 results->HookedList.Count++;
         } else {
-            setColor(GREEN);
-            printf("\t[+] %s!%s addresses match\n", IATList->Entries[i].ExportedBy, IATList->Entries[i].Name);
-            setColor(WHITE);
+            //setColor(GREEN);
+            //printf("\t[+] %s!%s addresses match\n", IATList->Entries[i].ExportedBy, IATList->Entries[i].Name);
+            //setColor(WHITE);
         }
     }
-    printf("\n[i] %d/%d failed on error\n", failedCount, IATList->Count);
+    //printf("\n[i] %d/%d failed on error\n", failedCount, IATList->Count);
 }
+
+
 
 void isHooked(RESULTS* results) {
     //? PEB walk to reach modules list
@@ -257,13 +226,8 @@ void isHooked(RESULTS* results) {
     //? Loop for each module, here you get the IAT, then you need to loop through it and compare addresses to EAT
     do {
         UNICODE_STRING *modName = (UNICODE_STRING *)((ULONG_PTR)currentEntry + 0x58); // BaseDllName
-  /*      if (wcsicmp(modName->Buffer, L"kernelbase.dll") == 0) {
-            printf("[i] kernelbase, skipping...\n");
-        currentFlink = currentFlink->Flink;
-        currentEntry = (LDR_DATA_TABLE_ENTRY*)((ULONG_PTR)currentFlink - 0x10);
-            continue;
-        }*/
-        printf("\n====================[ %ls ]========================\n", modName->Buffer);
+        
+        //printf("\n====================[ %ls ]========================\n", modName->Buffer);
         PVOID imageBase = getModuleBase(modName->Buffer);
         if (imageBase == NULL) {
             printf("\n[!] Failed to get image base address of %ls\n", modName->Buffer);
@@ -274,15 +238,15 @@ void isHooked(RESULTS* results) {
             printf("\n[!] malloc failed\n");
         }
         IATEntries->Count = 0;
-        getModuleIATAddresses(imageBase, IATEntries);
+        getModuleIATAddresses(imageBase, IATEntries, modName);
         if (IATEntries->Count == 0) {
-            printf("\n[!] Couldn't find IAT entries for %ls\n", modName->Buffer);
+            //printf("\n[!] Couldn't find IAT entries for %ls\n", modName->Buffer);
             currentFlink = currentFlink->Flink;
             currentEntry = (LDR_DATA_TABLE_ENTRY*)((ULONG_PTR)currentFlink - 0x10);
             free(IATEntries);
             continue;
         }
-        printf("[i] Retrieved %d functions from IAT\n", IATEntries->Count);
+        //printf("[i] Retrieved %d functions from IAT\n", IATEntries->Count);
 
         // compare iat to eat, fill results
         compareAddresses(IATEntries, results);
@@ -294,17 +258,33 @@ void isHooked(RESULTS* results) {
     } while (currentFlink != firstFlink);
 }
 
-int main() {
-    //* parse cmdline arguments and flags
-    // -s for silent
-    // -dll=[dll] to specify only certain dll to check, null for the main module
-    RESULTS* results = (RESULTS*)malloc(sizeof(RESULTS));
-    results->HookedList.Count = 0;
-    isHooked(results);
-    if (results->Hooked) {
-        printf("[!] Process IAT(s) is hooked\n");
-    } else {
-        printf("[+] Process IATs are not hooked\n");
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
+    switch (ul_reason_for_call) {
+    case DLL_PROCESS_ATTACH:
+        HANDLE hEvent = CreateEvent(NULL, FALSE, FALSE, "Global\\detector");
+        if (hEvent != NULL) {
+        //MessageBox(NULL, "DLL loaded", "DllMain", MB_OK);
+            HANDLE hSharedMem = OpenFileMapping(FILE_MAP_ALL_ACCESS, FALSE, "detector");
+            if (hSharedMem != NULL) {
+                // map shared mem to this process' memory space
+                RESULTS* sharedResults = (RESULTS*)MapViewOfFile(
+                    hSharedMem, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(RESULTS));
+                if (sharedResults != NULL) {
+                    // fills results to shared mem
+                    isHooked(sharedResults);
+                    SetEvent(hEvent);
+                    CloseHandle(hEvent);
+                } else {
+                    CloseHandle(hEvent);
+                    CloseHandle(hSharedMem);
+                }
+            } else {
+                CloseHandle(hEvent);
+            }
+        } else {
+        MessageBox(NULL, "Event fail", "DllMain", MB_OK);
+        }
+        break;
     }
-    free(results);
+    return TRUE;
 }

